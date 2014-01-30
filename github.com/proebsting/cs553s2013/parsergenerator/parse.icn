@@ -1,0 +1,198 @@
+record alt(L, attr)
+record cat(L, attr)
+record rep(e, attr)
+record opt(e, attr)
+record sym(s, attr)
+record prod(lhs, rhs, attr)
+
+procedure error()
+	write("error: ", image(&subject[1:&pos]), " : ", image(&subject[&pos:0]))
+	runerr(500, "parse error: " || image(&subject))
+end
+
+procedure parse()
+	local s, L, p
+
+	L := []
+	while s := read() do {
+		if s ? ="//" then next
+		p := (s ? production())
+		put(L, p)
+	}
+	return L
+end
+
+procedure skip()
+	tab(many(' \t'))
+end
+
+procedure production()
+	local lhs, e
+
+	lhs := id()
+	skip()
+	="=" | error()
+	e := E()
+	skip()
+	="." | error()
+	return prod(lhs,e)
+end
+
+procedure rhs()
+	return id()
+end
+
+procedure id()
+	skip()
+	return tab(many(&letters))
+end
+
+procedure E()
+	local t, L
+
+	t := T()
+	L := [t]
+	skip()
+	while ="|" do {
+		t := T()
+		put(L, t)
+		skip()
+	}
+	return if *L = 1 then L[1] else alt(L)
+end
+
+procedure T()
+	local f, L
+
+	f := F()
+	L := [f]
+	skip()
+	while any('([{"' ++ &letters) do {
+		f := F()
+		put(L, f)
+		skip()
+	}
+	return if *L = 1 then L[1] else cat(L)
+end
+
+procedure F()
+	local e, s
+
+	skip()
+	if ="[" then {
+		e := E()
+		skip()
+		="]" | error()
+		return opt(e)
+	} else if ="(" then {
+		e := E()
+		skip()
+		=")" | error()
+		return e
+	} else if ="{" then {
+		e := E()
+		skip()
+		="}" | error()
+		return rep(e)
+	} else if s := tab(many(&letters)) then {
+		return sym(s)
+	} else if ="\"" then {
+		if not (s := tab(upto('"'))) then {
+			error()
+		}
+		="\"" | error()
+		return sym(s)
+	} else {
+		error()
+	}
+end
+
+procedure dumpParse(indent, p)
+	local c
+
+	case type(p) of {
+	"alt": {
+		c := altConflict(p)
+		dumpNode(indent, p, c)
+		every dumpParse(indent||". ", !p.L)
+	}
+	"cat": {
+		dumpNode(indent, p)
+		every dumpParse(indent||". ", !p.L)
+	}
+	"prod": {
+		dumpNode(indent, p)
+		write(indent, ". ", p.lhs)
+		dumpParse(indent||". ", p.rhs)
+	}
+	"rep": {
+		c := optConflict(p)
+		dumpNode(indent, p, c)
+		dumpParse(indent||". ", p.e)
+	}
+	"opt": {
+		c := optConflict(p)
+		dumpNode(indent, p, c)
+		dumpParse(indent||". ", p.e)
+	}
+	"sym": {
+		dumpNode(indent, p)
+		write(indent, ". ", p.s)
+	}
+	default: runerr(500, p)
+	}
+end
+
+procedure predict(p)
+	return if \p.attr.nullable then p.attr.first ++ p.attr.follow else copy(p.attr.first)
+end
+
+procedure altConflict(p)
+	local T, S, i
+
+	T := table(0)
+	every T[!predict(!p.L)] +:= 1
+	S := set([])
+	every i := key(T) & T[i] > 1 do {
+		insert(S, i)
+	}
+	if *S > 0 then {
+		return set2string(S, "CONFLICT")
+	}
+end
+
+procedure optConflict(p)
+	local s, S
+
+	if \(\p.attr).follow & S := (p.attr.follow ** p.attr.first) & *S > 0 then {
+		s := set2string(S, "CONFLICT")
+	}
+	return s
+end
+
+procedure set2string(S, name)
+	local s
+	s := name || "{ "
+	every s||:= !S || " "
+	s ||:= "}"
+	return s
+end
+
+procedure dumpNode(indent, p, c)
+	local S
+
+	writes(indent, type(p))
+	if \(\p.attr).nullable then {
+		writes(" nullable")
+	}
+	if \(\p.attr).first then {
+		writes(" ", set2string(p.attr.first, "FIRST"))
+	}
+	if \(\p.attr).nullable & \(\p.attr).follow then {
+		writes(" ", set2string(p.attr.follow, "FOLLOW"))
+	}
+	if *\c > 0 then {
+		writes(" ", c)
+	}
+	write()
+end

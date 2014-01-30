@@ -1,0 +1,100 @@
+procedure emitFile(L, nonterms)
+	labelno := 0
+	write("package parser")
+	write("import (\"github.com/proebsting/cs553s2013/lexer\")")
+	every emit(!L, nonterms, &null)
+end
+
+global labelno
+
+procedure emit(p, nonterms, known)
+	local s, i, flag, kid, L, S
+
+	case type(p) of {
+	"alt": {
+		write("switch lex.Peek() {")
+		every kid := !p.L do {
+			writes("case ")
+			S := kid.attr.first
+			if \kid.attr.nullable then S ++:= kid.attr.follow
+			flag := &null
+			every i := !S do {
+				if \flag then writes(",")
+				writes("lexer.", trans(i))
+				flag := 1
+			}
+			write(":")
+			emit(kid, nonterms, S)
+		}
+		write("default: return false, lex.ErrorMessage(\" unexpected token\")")
+		write("}")
+	}
+	"cat": {
+		flag := known
+		every i := !p.L do {
+			emit(i, nonterms, flag)
+			flag := &null
+		}
+	}
+	"prod": {
+		write()
+		write("func ", p.lhs, "(lex *lexType) (ok bool, error string) {")
+		emit(p.rhs, nonterms, &null)
+		write("return true, \"ok\"")
+		write("}")
+	}
+	"rep": {
+		L := labelno
+		labelno+:= 1
+		write("L", L, ": for  {")
+		write("switch lex.Peek() {")
+		writes("case ")
+		flag := &null
+		S := p.e.attr.first
+		every i := !S do {
+			if \flag then writes(",")
+			writes("lexer.", trans(i))
+			flag := 1
+		}
+		write(":")
+		emit(p.e, nonterms, S)
+		write("default: break L", L)
+		write("}")
+		write("}")
+	}
+	"opt": {
+		write("switch lex.Peek() {")
+		writes("case ")
+		flag := &null
+		S := p.e.attr.first
+		every i := !S do {
+			if \flag then writes(",")
+			writes("lexer.", trans(i))
+			flag := 1
+		}
+		write(":")
+		emit(p.e, nonterms, S)
+		write("}")
+	}
+	"sym": {
+		if member(nonterms, p.s) then {
+			write("if ok, msg := ", p.s, "(lex); !ok {")
+			write("return ok, msg")
+			write("}")
+		} else {
+			if *\known = 1 then {
+				write("lex.Advance() // ", trans(?known))
+			} else {
+				write("if lexer.", trans(p.s), "== lex.Peek() {")
+				write("lex.Advance()")
+				write("} else {")
+				write("return false, lex.ErrorMessage(\" expected ", p.s, "\")")
+				write("}")
+			}
+		}
+	}
+	default: runerr(500, p)
+	}
+end
+
+

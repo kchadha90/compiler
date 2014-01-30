@@ -1,0 +1,29 @@
+TypeDeclaration  =  ident "=" ArrayType. 
+Type  =  ident | ArrayType. 
+ArrayType  =  ARRAY integer OF Type. 
+IdentList  =  ident {"," ident}. 
+VariableDeclaration  =  IdentList ":" Type. 
+expression  =  SimpleExpression [relation SimpleExpression]. 
+relation  =  "=" | "#" | "<" | "<=" | ">" | ">=" . 
+SimpleExpression  =  ["+" | "-"] term {AddOperator term}. 
+AddOperator  =  "+" | "-" | OR. 
+term  =  factor {MulOperator factor}. 
+MulOperator  =  "*" | "/" | DIV | MOD | "&". 
+factor  =  integer | string | NIL | TRUE | FALSE | designator [ActualParameters] | "(" expression ")" | "~" factor. 
+designator  =  ident {selector}.
+selector  =  "[" expression "]" . 
+ExpList  =  expression {"," expression}. 
+ActualParameters  =  "(" [ExpList] ")" . 
+statement  =  [AssignOrCall | IfStatement | WhileStatement | ForStatement]. 
+AssignOrCall = designator ( ":=" expression | ActualParameters ) .
+StatementSequence  =  statement {";" statement}. 
+IfStatement  =  IF expression THEN StatementSequence {ELSIF expression THEN StatementSequence} [ELSE StatementSequence] END. 
+WhileStatement  =  WHILE expression DO StatementSequence {ELSIF expression DO StatementSequence} END. 
+ForStatement  =  FOR ident ":=" expression TO expression [BY integer] DO StatementSequence END. 
+ProcedureDeclaration  =  ProcedureHeading ";" ProcedureBody ident. 
+ProcedureHeading  =  PROCEDURE ident "(" [FPSection {";" FPSection}] ")" [":" ident]. 
+ProcedureBody  =  DeclarationSequence [BEGIN StatementSequence] [RETURN expression] END. 
+DeclarationSequence  =  [TYPE {TypeDeclaration ";"}] [VAR {VariableDeclaration ";"}] {ProcedureDeclaration ";"}. 
+FPSection  =  [VAR] ident {"," ident} ":" FormalType. 
+FormalType  =  [ARRAY OF] ident. 
+module  =  MODULE ident ";" DeclarationSequence [BEGIN StatementSequence] END ident "." . 

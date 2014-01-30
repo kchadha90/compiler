@@ -1,0 +1,38 @@
+procedure trans(s)
+static T
+initial {
+T := table()
+T["ident"] := "IDENT"
+T["integer"] := "INTEGER"
+T["real"] := "REAL"
+T["string"] := "STRING"
+T["#"] := "HASH"
+T["&"] := "AMP"
+T["("] := "LPAREN"
+T[")"] := "RPAREN"
+T["*"] := "STAR"
+T["+"] := "PLUS"
+T[","] := "COMMA"
+T["-"] := "MINUS"
+T["."] := "DOT"
+T[".."] := "DOTDOT"
+T["/"] := "SLASH"
+T[":"] := "COLON"
+T[":="] := "COLONEQUAL"
+T[";"] := "SEMICOLON"
+T["<"] := "LESS"
+T["<="] := "LESSEQUAL"
+T["="] := "EQUAL"
+T[">"] := "GREATER"
+T[">="] := "GREATEREQUAL"
+T["["] := "LSQUARE"
+T["]"] := "RSQUARE"
+T["^"] := "CARAT"
+T["{"] := "LCURLY"
+T["|"] := "BAR"
+T["}"] := "RCURLY"
+T["~"] := "TILDE"
+}
+
+return (\T[s] | s)
+end

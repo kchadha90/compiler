@@ -1,0 +1,252 @@
+record attr(nullable, first, follow)
+
+procedure main()
+	local nullable, nonterms, first, i, follow, terms
+	local L
+	L := parse()
+
+	every initAttr(!L)
+	nonterms := set([])
+	every insert(nonterms, (!L).lhs)
+
+	nullable := set([])
+
+	changed := "true"
+	while \changed do {
+		changed := &null
+		every computeNullable(!L, nullable)	
+	}
+
+	first := table()
+	every i := !nonterms do {
+		first[i] := set([])
+	}
+	changed := "true"
+	while \changed do {
+		changed := &null
+		every computeFirst(!L, nonterms,nullable, first)	
+	}
+
+	follow := table()
+	every i := !nonterms do {
+		follow[i] := set([])
+	}
+	changed := "true"
+	while \changed do {
+		changed := &null
+		every computeFollow(!L, nonterms,nullable, follow)	
+	}
+
+	# every dumpParse("// ", !L)
+
+	terms := set([])
+	every computeTerms(!L, terms, nonterms)
+	# every write("TERM: ", !terms)
+
+	emitFile(L, nonterms)
+
+end
+
+
+procedure computeTerms(p, terms, nonterms)
+	local S, i
+	case type(p) of {
+	"alt": {
+		every computeTerms(!p.L, terms, nonterms)
+	}
+	"cat": {
+		every computeTerms(!p.L, terms, nonterms)
+	}
+	"prod": {
+		computeTerms(p.rhs, terms, nonterms)
+	}
+	"rep": {
+		computeTerms(p.e, terms, nonterms)
+	}
+	"opt": {
+		computeTerms(p.e, terms, nonterms)
+	}
+	"sym": {
+		if not member(nonterms, p.s) then {
+			insert(terms, p.s)
+		}
+	}
+	default: runerr(500, p)
+	}
+end
+
+global changed
+
+procedure computeFollow(p, nonterms, nullable, follow)
+	local S, i
+	case type(p) of {
+	"alt": {
+		every (!p.L).attr.follow := copy(p.attr.follow)
+		every computeFollow(!p.L, nonterms, nullable, follow)
+	}
+	"cat": {
+		p.L[-1].attr.follow := copy(p.attr.follow)
+		computeFollow(p.L[-1], nonterms, nullable, follow)
+		every i := *p.L-1 to 1 by -1 do {
+			if \p.L[i+1].attr.nullable then {
+				p.L[i].attr.follow := p.L[i+1].attr.first ++ p.L[i+1].attr.follow
+			} else {
+				p.L[i].attr.follow := copy(p.L[i+1].attr.first)
+			}
+			computeFollow(p.L[i], nonterms, nullable, follow)
+		}
+	}
+	"prod": {
+		p.attr.follow := p.rhs.attr.follow := copy(follow[p.lhs])
+		computeFollow(p.rhs, nonterms, nullable, follow)
+	}
+	"rep": {
+		p.e.attr.follow := p.e.attr.first ++ p.attr.follow
+		computeFollow(p.e, nonterms, nullable, follow)
+	}
+	"opt": {
+		p.e.attr.follow := copy(p.attr.follow)
+		computeFollow(p.e, nonterms, nullable, follow)
+	}
+	"sym": {
+		if member(nonterms, p.s) then {
+			S := p.attr.follow -- follow[p.s]
+			if *S > 0 then {
+				changed := "true"
+				every insert(follow[p.s], !p.attr.follow)
+			}
+		}
+	}
+	default: runerr(500, p)
+	}
+end
+
+
+procedure setFirst(p, S)
+	if *S > *p.attr.first then {
+		changed := "true"
+		p.attr.first := S
+	}
+end
+
+procedure computeFirst(p, nonterms, nullable, first)
+	local S, i
+	case type(p) of {
+	"alt": {
+		every computeFirst(!p.L, nonterms, nullable, first)
+		S := set([])
+		every insert(S, !(!p.L).attr.first)
+		setFirst(p, S)
+	}
+	"cat": {
+		every computeFirst(!p.L, nonterms, nullable, first)
+		S := copy(p.L[1].attr.first)
+		i := 2
+		while i <= *p.L & \p.L[i-1].attr.nullable do {
+			every insert(S, !p.L[i].attr.first)
+			i +:= 1
+		}
+		setFirst(p, S)
+	}
+	"prod": {
+		computeFirst(p.rhs, nonterms, nullable, first)
+		setFirst(p, copy(p.rhs.attr.first))
+		S := p.attr.first -- first[p.lhs]
+		if *S > 0 then {
+			changed := "true"
+			every insert(first[p.lhs], !p.attr.first)
+		}
+	}
+	"rep": {
+		computeFirst(p.e, nonterms, nullable, first)
+		setFirst(p, copy(p.e.attr.first))
+	}
+	"opt": {
+		computeFirst(p.e, nonterms, nullable, first)
+		setFirst(p, copy(p.e.attr.first))
+	}
+	"sym": {
+		/first[p.s] := set([p.s])
+		p.attr.first := first[p.s]
+	}
+	default: runerr(500, p)
+	}
+end
+
+procedure setNullable(p)
+	static S
+	initial {
+		S := set([])
+	}
+	if member(S, p) then runerr(500, p)
+	insert(S, p)
+	changed := "true"
+	p.attr.nullable := "true"
+end
+
+procedure computeNullable(p, nullable)
+	case type(p) of {
+	"alt": {
+		every computeNullable(!p.L, nullable)
+		if /p.attr.nullable & \(!p.L).attr.nullable then {
+			setNullable(p)
+		}
+	}
+	"cat": {
+		every computeNullable(!p.L, nullable)
+		if /p.attr.nullable & not /(!p.L).attr.nullable then {
+			setNullable(p)
+		}
+	}
+	"prod": {
+		computeNullable(p.rhs, nullable)
+		if /p.attr.nullable & \p.rhs.attr.nullable then {
+			setNullable(p)
+			insert(nullable, p.lhs)
+		}
+	}
+	"rep": {
+		p.attr.nullable := "true"
+		computeNullable(p.e, nullable)
+	}
+	"opt": {
+		p.attr.nullable := "true"
+		computeNullable(p.e, nullable)
+	}
+	"sym": {
+		if /p.attr.nullable & member(nullable, p.s) then {
+			setNullable(p)
+		}
+	}
+	default: runerr(500, p)
+	}
+end
+
+procedure newAttr()
+	return attr(&null, set([]), set([]))
+end
+
+procedure initAttr(p)
+	p.attr := newAttr()
+	case type(p) of {
+	"alt": {
+		every initAttr(!p.L)
+	}
+	"cat": {
+		every initAttr(!p.L)
+	}
+	"prod": {
+		initAttr(p.rhs)
+	}
+	"rep": {
+		initAttr(p.e)
+	}
+	"opt": {
+		initAttr(p.e)
+	}
+	"sym": {
+		# nothing
+	}
+	default: runerr(500, p)
+	}
+end
